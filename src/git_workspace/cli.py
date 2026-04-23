@@ -79,9 +79,8 @@ def find_megamerge_hash() -> str | None:
     return commits[0]
 
 
-def find_workspacee_hash() -> str | None:
-    cfg = load_config()
-    raw = git(f"rev-parse --revs-only {cfg.name}")
+def find_branch_hash(branch: str) -> str | None:
+    raw = git(f"rev-parse --revs-only {branch}")
     commits = [b.strip() for b in raw.split("\n") if b]
     if not commits:
         return None
@@ -134,17 +133,21 @@ def cli(ctx, verbose):
 
 
 @cli.command
+@click.option("-b", "is_new_branch", is_flag=True)
 @click.argument("branch", type=str)
-def add(branch):
+def add(is_new_branch: bool, branch: str):
     fail_if_dirty()
     cfg = load_config()
     branches = set(cfg.branches)
     if branch in branches:
         raise click.ClickException(
             f"Branch '{branch}' is already in workspace")
-    if branch not in list_git_branches():
+    if not is_new_branch and branch not in list_git_branches():
         raise click.ClickException(
             f"Branch '{branch}' not found")
+    elif is_new_branch and branch in list_git_branches():
+        raise click.ClickException(
+            f"Branch '{branch}' already exists (and -b specified)")
     if branch == cfg.base:
         raise click.ClickException(
             f"Branch '{branch}' is workspace base and cannot be added")
@@ -153,12 +156,16 @@ def add(branch):
     cfg.branches = sorted(list(branches))
     save_config(cfg)
 
+    if is_new_branch:
+        real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
+        git(["branch", "--no-track", branch, real_base])
+
 
 @cli.command
 def status():
     cfg = load_config()
     merge_commit = find_megamerge_hash()
-    workspace_commit = find_workspacee_hash()
+    workspace_commit = find_branch_hash(cfg.name)
     if not merge_commit or not workspace_commit:
         raise click.ClickException("No workspace active")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
@@ -188,9 +195,14 @@ def up():
     if len(cfg.branches) < 2:
         raise click.ClickException("Too few branches added")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
+    real_base_hash = find_branch_hash(real_base)
+    if not real_base_hash:
+        raise click.ClickException("Unable to find base branch hash")
     git(f"checkout --no-track -b {cfg.name} {real_base}")
     message = f"git-ws managed branch\n\n{MARKER}"
     git(["merge", "--no-ff", "-m", message, *cfg.branches])
+    if find_branch_hash(cfg.name) == real_base_hash:
+        git(["commit", "--allow-empty", "-m", message])
 
 
 @cli.command
