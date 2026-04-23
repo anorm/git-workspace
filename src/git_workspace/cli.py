@@ -136,6 +136,11 @@ def cli(ctx, verbose):
 @click.option("-b", "is_new_branch", is_flag=True)
 @click.argument("branch", type=str)
 def add(is_new_branch: bool, branch: str):
+    """Add a branch to the workspace
+
+    Add an exising branch to the workspace. The base branch can not be
+    added. If invoked with -b, a new branch is created and added. The
+    new branch will be based on the workspace base"""
     fail_if_dirty()
     cfg = load_config()
     branches = set(cfg.branches)
@@ -164,6 +169,7 @@ def add(is_new_branch: bool, branch: str):
 @cli.command
 @click.argument("branch", type=str)
 def remove(branch):
+    """Remove a branch from the workspace"""
     fail_if_dirty()
     cfg = load_config()
     if branch not in cfg.branches:
@@ -175,6 +181,10 @@ def remove(branch):
 
 @cli.command
 def status():
+    """Prints a status of the workspace
+
+    Shows commit list for all branches and a short git status
+    for the working copy"""
     cfg = load_config()
     merge_commit = find_megamerge_hash()
     workspace_commit = find_branch_hash(cfg.name)
@@ -199,6 +209,9 @@ def status():
 
 @cli.command
 def up():
+    """Creates the workspace
+
+    Creates the workspace branch and merges all added brances into it."""
     fail_if_dirty()
     if is_up():
         return
@@ -219,6 +232,10 @@ def up():
 
 @cli.command
 def down():
+    """Removes the workspace
+
+    Deletes the workspace branch. If destructive, a confirmation is
+    shown"""
     fail_if_dirty()
     if not is_up():
         return
