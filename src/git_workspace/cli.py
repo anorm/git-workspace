@@ -6,9 +6,10 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-MARKER="## git-ws workspace marker ##"
+MARKER = "## git-ws workspace marker ##"
 ROOT: str
 VERBOSE = False
+
 
 class Config(BaseModel):
     branches: list[str] = Field(default_factory=list)
@@ -32,6 +33,7 @@ def printable_command(cmd: list[str], masking_opts=["-m"]):
             mask_next = True
     return " ".join(ret)
 
+
 def git(params: str | list[str], *, capture: bool = True):
     if isinstance(params, str):
         cmd = ["git", *params.split(" ")]
@@ -47,6 +49,7 @@ def git(params: str | list[str], *, capture: bool = True):
         return result.stdout.rstrip()
     else:
         return ""
+
 
 def git_branch_is_local(branch: str) -> bool:
     try:
@@ -74,7 +77,7 @@ def find_megamerge_hash() -> str | None:
     if len(commits) > 1:
         raise click.ClickException("Multiple workspace commits found")
     return commits[0]
-    
+
 
 def find_workspacee_hash() -> str | None:
     cfg = load_config()
@@ -101,7 +104,7 @@ def save_config(config):
     with open(f"{ROOT}/.gitws", "wb") as f:
         yaml.dump(config.model_dump(), f, encoding="utf-8")
 
-    
+
 def is_clean(include_untracked=False):
     if include_untracked:
         return git("status --porcelain") == ""
@@ -145,7 +148,7 @@ def add(branch):
     if branch == cfg.base:
         raise click.ClickException(
             f"Branch '{branch}' is workspace base and cannot be added")
-    
+
     branches.add(branch)
     cfg.branches = sorted(list(branches))
     save_config(cfg)
