@@ -162,6 +162,18 @@ def add(is_new_branch: bool, branch: str):
 
 
 @cli.command
+@click.argument("branch", type=str)
+def remove(branch):
+    fail_if_dirty()
+    cfg = load_config()
+    if branch not in cfg.branches:
+        raise click.ClickException(
+            f"Branch '{branch}' is not in the workspace")
+    cfg.branches.remove(branch)
+    save_config(cfg)
+
+
+@cli.command
 def status():
     cfg = load_config()
     merge_commit = find_megamerge_hash()
