@@ -119,7 +119,7 @@ def test_full_up_down_cycle(gitws, make_branch, run_git, repo: Path):
     # Marker commit exists exactly once
     marker_log = run_git(
         "log", "--all",
-        "--grep=## git-ws workspace marker ##",
+        "--grep=!!! git-ws workspace marker !!!",
         "--pretty=format:%H",
     ).stdout.strip().splitlines()
     assert len(marker_log) == 1

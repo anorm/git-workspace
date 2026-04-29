@@ -6,7 +6,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-MARKER = "## git-ws workspace marker ##"
+MARKER = "!!! git-ws workspace marker !!!"
 ROOT: str
 VERBOSE = False
 
