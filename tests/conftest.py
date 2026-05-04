@@ -32,7 +32,9 @@ def _system_path() -> str:
     return os.environ.get("PATH", "/usr/bin:/bin")
 
 
-def _run_git(args: list[str], cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess:
+def _run_git(
+        args: list[str], cwd: Path, env: dict[str, str]
+        ) -> subprocess.CompletedProcess:
     proc = subprocess.run(
         ["git", *args],
         cwd=cwd,

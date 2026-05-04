@@ -15,7 +15,9 @@ git-workspace = "git_workspace.cli:cli"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.409",
     "pytest>=8.0",
+    "ruff>=0.15.12",
 ]
 
 [tool.pytest.ini_options]
@@ -24,3 +26,16 @@ testpaths = ["tests"]
 [build-system]
 requires = ["uv_build>=0.11.7,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 80
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "B",   # bugbear
+  "UP",  # pyupgrade
+]

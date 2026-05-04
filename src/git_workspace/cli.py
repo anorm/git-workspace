@@ -33,7 +33,7 @@ class Config(BaseModel):
     name: str = "workspace"
     remote: str = ""
 
-def printable_command(cmd: list[str], masking_opts=["-m"]):
+def printable_command(cmd: list[str], masking_opts=("-m",)):
     ret = []
     mask_next = False
     for c in cmd:
@@ -106,7 +106,7 @@ def find_branch_hash(branch: str) -> str | None:
 
 def load_config():
     try:
-        with open(f"{ROOT}/.gitws", "r") as f:
+        with open(f"{ROOT}/.gitws") as f:
             cfg = yaml.safe_load(f)
     except FileNotFoundError:
         return Config()
@@ -319,8 +319,8 @@ def rebase(ctx):
             f.write("Before 'git workspace rebase':\n")
             f.write(git("for-each-ref"))
             f.write("\n")
-    except FileExistsError:
-        raise click.ClickException("git-workspace.log already exists")
+    except FileExistsError as err:
+        raise click.ClickException("git-workspace.log already exists") from err
 
     logfile_unlinked = False
     try:
