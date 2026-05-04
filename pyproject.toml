@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "cachetools>=7.1.1",
     "click>=8.3.2",
     "pydantic>=2.13.2",
     "pyyaml>=6.0.3",
@@ -32,6 +33,7 @@ target-version = "py314"
 line-length = 80
 
 [tool.ruff.lint]
+preview = true
 select = [
   "E",   # pycodestyle errors
   "F",   # pyflakes

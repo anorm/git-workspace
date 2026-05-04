@@ -1,11 +1,16 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+from collections.abc import Hashable, Mapping
 from pathlib import Path
+from typing import Literal, overload
 
 import click
 import yaml
+from cachetools import LRUCache
+from cachetools.keys import hashkey
 from pydantic import BaseModel, Field, model_validator
 
 MARKER = "!!! git-ws workspace marker !!!"
@@ -33,6 +38,7 @@ class Config(BaseModel):
     name: str = "workspace"
     remote: str = ""
 
+
 def printable_command(cmd: list[str], masking_opts=("-m",)):
     ret = []
     mask_next = False
@@ -49,21 +55,75 @@ def printable_command(cmd: list[str], masking_opts=("-m",)):
     return " ".join(ret)
 
 
-def git(params: str | list[str], *, capture: bool = True):
+_GIT_CACHE = LRUCache(1000)
+
+
+@overload
+def git(params: str | list[str], *,
+    capture: Literal[False],
+    rc_map: None = None) -> Literal[""]: ...
+@overload
+def git(params: str | list[str], *,
+    capture: bool = True,
+    rc_map: None = None) -> str: ...
+@overload
+def git[T](params: str | list[str], *,
+    capture: bool = True,
+    rc_map: Mapping[int, T]) -> T: ...
+
+
+def git(params: str | list[str], *, capture: bool = True,
+        rc_map: Mapping[int, Hashable] | None = None):
     if isinstance(params, str):
         cmd = ["git", *params.split(" ")]
     else:
         cmd = ["git", *params]
 
+    subcommand = next(p for p in cmd[1:] if not p.startswith("-"))
+    cache_nuke = subcommand not in [
+        "for-each-ref",
+        "log",
+        "merge-base",
+        "rev-parse",
+        "show-ref",
+        "show",
+        "status",
+        ]
+    
+    cache_key = hashkey(*cmd, capture, tuple(sorted((rc_map or {}).items())))
+    if cache_nuke:
+        _GIT_CACHE.clear()
+    else:
+        if cache_key in _GIT_CACHE:
+            return _GIT_CACHE[cache_key]
+
     if VERBOSE:
         click.secho(printable_command(cmd), fg="yellow")
     result = subprocess.run(cmd, capture_output=capture, text=True)
-    if result.returncode:
-        raise click.ClickException(result.stderr)
-    if capture:
-        return result.stdout.rstrip()
+    rc = result.returncode
+    if rc_map:
+        try:
+            ret = rc_map[rc]
+        except KeyError as e:
+            sys.stderr.write(
+                f"Failed while executing: {printable_command(cmd)}\n")
+            sys.stderr.write("STDOUT:\n")
+            sys.stderr.write(result.stdout)
+            sys.stderr.write("\n")
+            sys.stderr.write("STDERR:\n")
+            sys.stderr.write(result.stderr)
+            sys.stderr.write("\n")
+            raise click.ClickException("Error while running git") from e
     else:
-        return ""
+        if rc:
+            raise click.ClickException(result.stderr)
+        if capture:
+            ret = result.stdout.rstrip()
+        else:
+            ret = ""
+
+    _GIT_CACHE[cache_key] = ret
+    return ret
 
 
 def git_branch_is_local(branch: str) -> bool:
@@ -143,6 +203,31 @@ def is_up(cfg: Config):
     return has_branch
 
 
+def validate_branch_dependencies(cfg: Config):
+    real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
+    for branch in cfg.branches:
+        is_ancestor = git(
+            ["merge-base", "--is-ancestor", real_base, branch.name],
+            rc_map={0: True, 1: False})
+        if not is_ancestor:
+            click.secho(
+                f"WARNING: {branch.name} is not a decendant of {real_base}")
+
+        if branch.base:
+            if branch.base not in [b.name for b in cfg.branches]:
+                click.secho(
+                    f"ERROR: Branch {branch.name!r} has base branch "
+                    f"{branch.base!r} which is not in workspace", fg="red")
+            is_ancestor = git(
+                ["merge-base", "--is-ancestor", branch.base, branch.name],
+                rc_map={0: True, 1: False})
+            if not is_ancestor:
+                click.secho(
+                    f"WARNING: {branch.name} is not a decendant of "
+                    f"{branch.base}")
+    return True
+
+
 @click.group(invoke_without_command=True)
 @click.option("--verbose", is_flag=True, envvar="GIT_WS_VERBOSE")
 @click.pass_context
@@ -152,6 +237,11 @@ def cli(ctx, verbose):
         VERBOSE = True
     if ctx.invoked_subcommand is None:
         ctx.invoke(status)
+
+
+@cli.command
+def validate():
+    validate_branch_dependencies(load_config())
 
 
 @cli.command
@@ -207,10 +297,10 @@ def status():
     Shows commit list for all branches and a short git status
     for the working copy"""
     cfg = load_config()
-    merge_commit = find_megamerge_hash(cfg)
-    workspace_commit = find_branch_hash(cfg.name)
     if not is_up(cfg):
         raise click.ClickException("No workspace active")
+    workspace_commit = find_branch_hash(cfg.name)
+    merge_commit = find_megamerge_hash(cfg)
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
         git(f"log --oneline --graph {real_base}..{branch.name}", capture=False)
@@ -290,9 +380,9 @@ def shell(branch: str):
     try:
         git(f"worktree add {workdir} {branch}")
         env = os.environ
-        click.secho("="*80, fg="yellow")
+        click.secho("=" * 80, fg="yellow")
         click.secho(f"git-ws shell for branch {branch}", fg="yellow")
-        click.secho("="*80, fg="yellow")
+        click.secho("=" * 80, fg="yellow")
         if tmux_pane:
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=#381018"])
@@ -302,7 +392,7 @@ def shell(branch: str):
         if tmux_pane:
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=default"])
-        click.secho("*"*80, fg="yellow")
+        click.secho("*" * 80, fg="yellow")
         shutil.rmtree(tempdir)
         git("worktree prune")
 
@@ -351,6 +441,7 @@ def rebase(ctx):
             click.secho(
                 "Something went wrong. Original branch state stored in "
                 "git-workspace.log", fg="red")
+
 
 if __name__ == "__main__":
     cli()
