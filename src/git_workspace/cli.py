@@ -94,7 +94,7 @@ def load_config():
         with open(f"{ROOT}/.gitws", "r") as f:
             cfg = yaml.safe_load(f)
     except FileNotFoundError:
-        cfg = Config()
+        return Config()
 
     return Config.model_validate(cfg)
 
