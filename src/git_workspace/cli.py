@@ -118,8 +118,12 @@ def fail_if_dirty():
 
 
 def is_up():
+    has_merge = find_megamerge_hash() is not None
     cfg = load_config()
-    return cfg.name in list_git_branches()
+    has_branch = cfg.name in list_git_branches()
+    if has_merge != has_branch:
+        raise click.ClickException("Workspace is in inconsistent state")
+    return has_branch
 
 
 @click.group(invoke_without_command=True)
@@ -189,7 +193,7 @@ def status():
     cfg = load_config()
     merge_commit = find_megamerge_hash()
     workspace_commit = find_branch_hash(cfg.name)
-    if not merge_commit or not workspace_commit:
+    if not is_up():
         raise click.ClickException("No workspace active")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
