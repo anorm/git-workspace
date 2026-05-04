@@ -278,7 +278,8 @@ def shell(branch: str):
         if tmux_pane:
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=#381018"])
-        subprocess.run(["zsh", "-i"], cwd=workdir, env=env)
+        shell = os.environ.get("SHELL", "/bin/sh")
+        subprocess.run([shell], cwd=workdir, env=env)
     finally:
         if tmux_pane:
             subprocess.run([
