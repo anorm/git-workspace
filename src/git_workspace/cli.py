@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 
 import click
@@ -278,12 +279,11 @@ def shell(branch: str):
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=#381018"])
         subprocess.run(["zsh", "-i"], cwd=workdir, env=env)
+    finally:
         if tmux_pane:
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=default"])
         click.secho("*"*80, fg="yellow")
-    finally:
-        import shutil
         shutil.rmtree(tempdir)
         git("worktree prune")
 
