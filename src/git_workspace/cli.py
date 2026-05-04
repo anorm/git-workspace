@@ -298,33 +298,40 @@ def rebase(ctx):
     fail_if_dirty()
 
     try:
-        with open("git-workspace.log", "x") as f:
+        with open(f"{ROOT}/git-workspace.log", "x") as f:
             f.write("Before 'git workspace rebase':\n")
             f.write(git("for-each-ref"))
             f.write("\n")
     except FileExistsError:
         raise click.ClickException("git-workspace.log already exists")
 
-    msg = " Taking workspace DOWN "
-    click.secho(f"\n{msg:=^80}")
-    ctx.invoke(down)
-
-    cfg = load_config()
-    real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
-    for branch in cfg.branches:
-        if not git_branch_is_local(branch):
-            click.secho(f"Branch '{branch}' is not local. Skipping...")
-            continue
-        msg = f" Rebasing {branch} onto {real_base} "
+    logfile_unlinked = False
+    try:
+        msg = " Taking workspace DOWN "
         click.secho(f"\n{msg:=^80}")
-        git(f"rebase {real_base} {branch}", capture=False)
+        ctx.invoke(down)
 
-    msg = " Taking workspace UP "
-    click.secho(f"\n{msg:=^80}")
-    ctx.invoke(up)
+        cfg = load_config()
+        real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
+        for branch in cfg.branches:
+            if not git_branch_is_local(branch):
+                click.secho(f"Branch '{branch}' is not local. Skipping...")
+                continue
+            msg = f" Rebasing {branch} onto {real_base} "
+            click.secho(f"\n{msg:=^80}")
+            git(f"rebase {real_base} {branch}", capture=False)
 
-    os.unlink("git-workspace.log")
+        msg = " Taking workspace UP "
+        click.secho(f"\n{msg:=^80}")
+        ctx.invoke(up)
 
+        os.unlink("git-workspace.log")
+        logfile_unlinked = True
+    finally:
+        if not logfile_unlinked:
+            click.secho(
+                "Something went wrong. Original branch state stored in "
+                "git-workspace.log", fg="red")
 
 if __name__ == "__main__":
     cli()
