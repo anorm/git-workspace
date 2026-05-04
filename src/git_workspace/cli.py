@@ -6,19 +6,32 @@ from pathlib import Path
 
 import click
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 MARKER = "!!! git-ws workspace marker !!!"
 ROOT: str
 VERBOSE = False
 
 
+class Branch(BaseModel):
+    name: str
+    base: str | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def igrate_old_branches_schema(cls, value):
+        match value:
+            case str():
+                return {"name": value, "base": None}
+            case _:
+                return value
+
+
 class Config(BaseModel):
-    branches: list[str] = Field(default_factory=list)
+    branches: list[Branch] = Field(default_factory=list)
     base: str = "main"
     name: str = "workspace"
     remote: str = ""
-
 
 def printable_command(cmd: list[str], masking_opts=["-m"]):
     ret = []
@@ -149,7 +162,7 @@ def add(is_new_branch: bool, branch: str):
     new branch will be based on the workspace base"""
     fail_if_dirty()
     cfg = load_config()
-    branches = set(cfg.branches)
+    branches = set(b.name for b in cfg.branches)
     if branch in branches:
         raise click.ClickException(
             f"Branch '{branch}' is already in workspace")
@@ -163,8 +176,7 @@ def add(is_new_branch: bool, branch: str):
         raise click.ClickException(
             f"Branch '{branch}' is workspace base and cannot be added")
 
-    branches.add(branch)
-    cfg.branches = sorted(list(branches))
+    cfg.branches.append(Branch(name=branch, base=None))
     save_config(cfg)
 
     if is_new_branch:
@@ -178,10 +190,10 @@ def remove(branch):
     """Remove a branch from the workspace"""
     fail_if_dirty()
     cfg = load_config()
-    if branch not in cfg.branches:
+    if branch not in set(b.name for b in cfg.branches):
         raise click.ClickException(
             f"Branch '{branch}' is not in the workspace")
-    cfg.branches.remove(branch)
+    cfg.branches = [b for b in cfg.branches if b.name != branch]
     save_config(cfg)
 
 
@@ -198,7 +210,7 @@ def status():
         raise click.ClickException("No workspace active")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
-        git(f"log --oneline --graph {real_base}..{branch}", capture=False)
+        git(f"log --oneline --graph {real_base}..{branch.name}", capture=False)
         print()
 
     if workspace_commit != merge_commit:
@@ -231,7 +243,8 @@ def up():
         raise click.ClickException("Unable to find base branch hash")
     git(f"checkout --no-track -b {cfg.name} {real_base}")
     message = f"git-ws managed branch\n\n{MARKER}"
-    git(["merge", "--no-ff", "-m", message, *cfg.branches])
+    branch_names = [b.name for b in cfg.branches]
+    git(["merge", "--no-ff", "-m", message, *branch_names])
     if find_branch_hash(cfg.name) == real_base_hash:
         git(["commit", "--allow-empty", "-m", message])
 
@@ -318,12 +331,12 @@ def rebase(ctx):
         cfg = load_config()
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
         for branch in cfg.branches:
-            if not git_branch_is_local(branch):
-                click.secho(f"Branch '{branch}' is not local. Skipping...")
+            if not git_branch_is_local(branch.name):
+                click.secho(f"Branch '{branch.name}' is not local. Skipping...")
                 continue
-            msg = f" Rebasing {branch} onto {real_base} "
+            msg = f" Rebasing {branch.name} onto {real_base} "
             click.secho(f"\n{msg:=^80}")
-            git(f"rebase {real_base} {branch}", capture=False)
+            git(f"rebase {real_base} {branch.name}", capture=False)
 
         msg = " Taking workspace UP "
         click.secho(f"\n{msg:=^80}")

@@ -29,7 +29,9 @@ def test_add_branch_writes_config(gitws, make_branch, repo: Path):
     assert gitws("add", "feature/b").returncode == 0
 
     cfg = yaml.safe_load((repo / ".gitws").read_text())
-    assert cfg["branches"] == ["feature/a", "feature/b"]
+    assert cfg["branches"] == [
+        {"name": "feature/a", "base": None},
+        {"name": "feature/b", "base": None}]
     assert cfg["base"] == "main"
     assert cfg["name"] == "workspace"
 
@@ -54,7 +56,7 @@ def test_add_with_dash_b_creates_branch(gitws, run_git, repo: Path):
     assert "feature/new" in branches
 
     cfg = yaml.safe_load((repo / ".gitws").read_text())
-    assert "feature/new" in cfg["branches"]
+    assert "feature/new" in [b.get("name") for b in cfg["branches"]]
 
 
 def test_add_duplicate_fails(gitws, make_branch):
@@ -76,7 +78,7 @@ def test_remove_branch(gitws, make_branch, repo: Path):
     assert result.returncode == 0, result.stderr
 
     cfg = yaml.safe_load((repo / ".gitws").read_text())
-    assert cfg["branches"] == ["feature/b"]
+    assert cfg["branches"] == [{"name": "feature/b", "base": None}]
 
 
 def test_remove_branch_not_in_workspace_fails(gitws):
