@@ -85,7 +85,7 @@ def find_branch_hash(branch: str) -> str | None:
     if not commits:
         return None
     if len(commits) > 1:
-        raise click.ClickException("Multiple workspace commits found")
+        raise RuntimeError("Shouldn't happen")
     return commits[0]
 
 
