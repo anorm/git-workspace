@@ -1,11 +1,12 @@
 import os
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 
 import click
 import yaml
 from pydantic import BaseModel, Field
-
 
 MARKER = "!!! git-ws workspace marker !!!"
 ROOT: str
@@ -143,7 +144,7 @@ def cli(ctx, verbose):
 def add(is_new_branch: bool, branch: str):
     """Add a branch to the workspace
 
-    Add an exising branch to the workspace. The base branch can not be
+    Add an existing branch to the workspace. The base branch can not be
     added. If invoked with -b, a new branch is created and added. The
     new branch will be based on the workspace base"""
     fail_if_dirty()
@@ -269,8 +270,6 @@ def shell(branch: str):
     if branch not in list_git_branches():
         raise click.ClickException(f"Branch '{branch}' not found")
     tmux_pane = os.getenv("TMUX_PANE")
-    import tempfile
-    from pathlib import Path
     tempdir = Path(tempfile.mkdtemp())
     workdir = tempdir / f"{Path(ROOT).name}/{branch}".replace("/", "-")
     try:
@@ -298,7 +297,7 @@ def shell(branch: str):
 def rebase(ctx):
     """Rebases all workspace branches on the base
 
-    Effectvely down's the workspace, then rebase each of the workspace
+    Effectively down's the workspace, then rebase each of the workspace
     branches on base. Finally, up's the workspace"""
     fail_if_dirty()
 
