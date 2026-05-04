@@ -84,8 +84,12 @@ def list_git_branches():
         for b in raw.split("\n") if b]
 
 
-def find_megamerge_hash() -> str | None:
-    raw = git(["log", "--all", f'--grep={MARKER}', '--pretty=format:%H'])
+def find_megamerge_hash(cfg: Config, *, check_workspace=True) -> str | None:
+    branches = [b.name for b in cfg.branches]
+    if check_workspace:
+        branches.append(cfg.name)
+    raw = git(
+        ["log", f'--grep={MARKER}', '--pretty=format:%H', *branches, "--"])
     commits = [b.strip() for b in raw.split("\n") if b]
     if not commits:
         return None
@@ -131,10 +135,9 @@ def fail_if_dirty():
         raise click.ClickException("The working copy is not clean")
 
 
-def is_up():
-    has_merge = find_megamerge_hash() is not None
-    cfg = load_config()
+def is_up(cfg: Config):
     has_branch = cfg.name in list_git_branches()
+    has_merge = find_megamerge_hash(cfg, check_workspace=has_branch) is not None
     if has_merge != has_branch:
         raise click.ClickException("Workspace is in inconsistent state")
     return has_branch
@@ -204,9 +207,9 @@ def status():
     Shows commit list for all branches and a short git status
     for the working copy"""
     cfg = load_config()
-    merge_commit = find_megamerge_hash()
+    merge_commit = find_megamerge_hash(cfg)
     workspace_commit = find_branch_hash(cfg.name)
-    if not is_up():
+    if not is_up(cfg):
         raise click.ClickException("No workspace active")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
@@ -231,10 +234,9 @@ def up():
 
     Creates the workspace branch and merges all added brances into it."""
     fail_if_dirty()
-    if is_up():
-        return
-
     cfg = load_config()
+    if is_up(cfg):
+        return
     if len(cfg.branches) < 2:
         raise click.ClickException("Too few branches added")
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
@@ -256,10 +258,10 @@ def down():
     Deletes the workspace branch. If destructive, a confirmation is
     shown"""
     fail_if_dirty()
-    if not is_up():
+    cfg = load_config()
+    if not is_up(cfg):
         return
 
-    cfg = load_config()
     # TODO: Find commits after marker and check if they are
     # cherry-picked onto the other branches
     if MARKER not in git(f"show -s --format=%B {cfg.name}"):
