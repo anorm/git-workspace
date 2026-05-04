@@ -100,8 +100,8 @@ def load_config():
 
 
 def save_config(config):
-    with open(f"{ROOT}/.gitws", "wb") as f:
-        yaml.dump(config.model_dump(), f, encoding="utf-8")
+    with open(f"{ROOT}/.gitws", "w") as f:
+        yaml.dump(config.model_dump(), f)
 
 
 def is_clean(include_untracked=False):
