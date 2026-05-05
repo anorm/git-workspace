@@ -395,7 +395,7 @@ def shell(branch: str):
         if tmux_pane:
             subprocess.run([
                 "tmux", "select-pane", "-t", tmux_pane, "-P", "bg=default"])
-        click.secho("*" * 80, fg="yellow")
+        click.secho("=" * 80, fg="yellow")
         shutil.rmtree(tempdir)
         git("worktree prune")
 
