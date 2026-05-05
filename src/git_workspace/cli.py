@@ -268,6 +268,23 @@ def validate():
 
 
 @cli.command
+def show():
+    """Show the workspace contents"""
+    cfg = load_config()
+    real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
+    click.secho("Name: ", fg="yellow", nl=False)
+    click.echo(cfg.name)
+    click.secho("Base: ", fg="yellow", nl=False)
+    click.echo(real_base)
+    click.secho("Branches:", fg="yellow")
+    for branch in cfg.branches:
+        if branch.base:
+            click.echo(f"- {branch.name} on {branch.base}")
+        else:
+            click.echo(f"- {branch.name}")
+
+
+@cli.command
 @click.option("-b", "is_new_branch", is_flag=True)
 @click.argument("branch", type=str)
 def add(is_new_branch: bool, branch: str):
