@@ -69,8 +69,12 @@ git workspace down
 git workspace remove feature/bar
 ```
 
-Run with `--verbose` (or set `GIT_WS_VERBOSE=1`) to see every git command 
-executed.
+Run with `--verbose`/`-v` (or set `GIT_WS_VERBOSE=1`) to see every git 
+command executed. Use `--silent`/`-s` to counteract verbosity (the flags 
+cancel each other out and may be repeated).
+
+Running `git workspace` with no subcommand is equivalent to 
+`git workspace status`.
 
 ### Commands
 
@@ -79,10 +83,12 @@ executed.
 | `add [-b] BRANCH` | Add an existing branch (or create with `-b`) to the workspace |
 | `remove BRANCH` | Remove a branch from the workspace |
 | `up` | Create the workspace branch by merging all member branches |
-| `down` | Delete the workspace branch |
+| `down` | Delete the workspace branch (prompts for confirmation if it contains commits beyond the managed merge) |
 | `status` | Show per-branch commits and working copy status |
 | `rebase` | Down, rebase each member branch on base, then up |
 | `shell BRANCH` | Open an interactive shell in a temp worktree for `BRANCH` |
+| `show` | Show workspace name, base, and configured branches |
+| `validate` | Validate branch dependencies declared in `.gitws` |
 
 ## How to contribute
 
