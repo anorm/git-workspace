@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MARKER = "!!! git-ws workspace marker !!!"
 ROOT: str
-VERBOSE = False
+VERBOSE = 0
 
 
 class Branch(BaseModel):
@@ -80,7 +80,7 @@ def git(params: str | list[str], *, capture: bool = True,
         cmd = ["git", *params]
 
     subcommand = next(p for p in cmd[1:] if not p.startswith("-"))
-    cache_nuke = subcommand not in [
+    is_mutating = subcommand not in [
         "for-each-ref",
         "log",
         "merge-base",
@@ -91,14 +91,16 @@ def git(params: str | list[str], *, capture: bool = True,
         ]
     
     cache_key = hashkey(*cmd, capture, tuple(sorted((rc_map or {}).items())))
-    if cache_nuke:
+    if is_mutating:
         _GIT_CACHE.clear()
     else:
         if cache_key in _GIT_CACHE:
             return _GIT_CACHE[cache_key]
 
-    if VERBOSE:
-        click.secho(printable_command(cmd), fg="yellow")
+    if is_mutating and VERBOSE >= 1:
+        click.secho("+" + printable_command(cmd), fg="yellow")
+    elif not is_mutating and VERBOSE >= 2:
+        click.secho(" " + printable_command(cmd), fg="yellow")
     result = subprocess.run(cmd, capture_output=capture, text=True)
     rc = result.returncode
     if rc_map:
@@ -229,12 +231,13 @@ def validate_branch_dependencies(cfg: Config):
 
 
 @click.group(invoke_without_command=True)
-@click.option("--verbose", is_flag=True, envvar="GIT_WS_VERBOSE")
+@click.option("--verbose", "-v", count=True, envvar="GIT_WS_VERBOSE",
+    help="Increase verbosity (repeat max 2 times)")
 @click.pass_context
 def cli(ctx, verbose):
     global VERBOSE
     if verbose:
-        VERBOSE = True
+        VERBOSE = min(verbose, 2)
     if ctx.invoked_subcommand is None:
         ctx.invoke(status)
 
