@@ -39,6 +39,24 @@ class Config(BaseModel):
     remote: str = ""
 
 
+class StepProgress:
+    def __init__(self, total):
+        self.total = total
+        self.current = 0
+
+    @staticmethod
+    def echo(message):
+        click.secho(
+            f"\n{message}",
+            fg="bright_white",
+            bold=True,
+            underline=True)
+
+    def step(self, message):
+        self.current += 1
+        StepProgress.echo(f"Step {self.current}/{self.total}: {message}")
+
+
 def printable_command(cmd: list[str], masking_opts=("-m",)):
     ret = []
     mask_next = False
@@ -97,9 +115,9 @@ def git(params: str | list[str], *, capture: bool = True,
         if cache_key in _GIT_CACHE:
             return _GIT_CACHE[cache_key]
 
-    if is_mutating and VERBOSE >= 1:
+    if is_mutating and VERBOSE >= 0:
         click.secho("+" + printable_command(cmd), fg="yellow")
-    elif not is_mutating and VERBOSE >= 2:
+    elif not is_mutating and VERBOSE >= 1:
         click.secho(" " + printable_command(cmd), fg="yellow")
     result = subprocess.run(cmd, capture_output=capture, text=True)
     rc = result.returncode
@@ -231,13 +249,15 @@ def validate_branch_dependencies(cfg: Config):
 
 
 @click.group(invoke_without_command=True)
+@click.option("--silent", "-s", count=True,
+    help="The opposite of --verbose")
 @click.option("--verbose", "-v", count=True, envvar="GIT_WS_VERBOSE",
     help="Increase verbosity (repeat max 2 times)")
 @click.pass_context
-def cli(ctx, verbose):
+def cli(ctx, silent: int, verbose: int):
     global VERBOSE
     if verbose:
-        VERBOSE = min(verbose, 2)
+        VERBOSE = max(-1, min(1, verbose - silent))
     if ctx.invoked_subcommand is None:
         ctx.invoke(status)
 
@@ -419,22 +439,21 @@ def rebase(ctx):
 
     logfile_unlinked = False
     try:
-        msg = " Taking workspace DOWN "
-        click.secho(f"\n{msg:=^80}")
+        cfg = load_config()
+
+        progress = StepProgress(len(cfg.branches) + 2)
+        progress.step("Tear down workspace")
         ctx.invoke(down)
 
-        cfg = load_config()
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
         for branch in cfg.branches:
             if not git_branch_is_local(branch.name):
                 click.secho(f"Branch '{branch.name}' is not local. Skipping...")
                 continue
-            msg = f" Rebasing {branch.name} onto {real_base} "
-            click.secho(f"\n{msg:=^80}")
+            progress.step(f"Rebase {branch.name} onto {real_base}")
             git(f"rebase {real_base} {branch.name}", capture=False)
 
-        msg = " Taking workspace UP "
-        click.secho(f"\n{msg:=^80}")
+        progress.step("Bring up workspace")
         ctx.invoke(up)
 
         os.unlink("git-workspace.log")
