@@ -1,5 +1,7 @@
 # git-workspace
 
+[![CI](https://github.com/anorm/git-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/anorm/git-workspace/actions/workflows/ci.yml)
+
 A Git extension for working on multiple feature branches simultaneously by 
 merging them into a single ephemeral "workspace" branch.
 
