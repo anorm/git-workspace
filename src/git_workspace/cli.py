@@ -464,10 +464,10 @@ def rebase(ctx):
 
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
         for branch in cfg.branches:
+            progress.step(f"Rebase {branch.name} onto {real_base}")
             if not git_branch_is_local(branch.name):
                 click.secho(f"Branch '{branch.name}' is not local. Skipping...")
                 continue
-            progress.step(f"Rebase {branch.name} onto {real_base}")
             git(f"rebase {real_base} {branch.name}", capture=False)
 
         progress.step("Bring up workspace")
