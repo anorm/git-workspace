@@ -460,7 +460,12 @@ def rebase(ctx):
 
         progress = StepProgress(len(cfg.branches) + 2)
         progress.step("Tear down workspace")
-        ctx.invoke(down)
+        try:
+            ctx.invoke(down)
+        except click.Abort:
+            os.unlink(f"{ROOT}/git-workspace.log")
+            logfile_unlinked = True
+            raise
 
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
         for branch in cfg.branches:
