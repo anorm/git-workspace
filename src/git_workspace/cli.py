@@ -446,13 +446,14 @@ def rebase(ctx):
     branches on base. Finally, up's the workspace"""
     fail_if_dirty()
 
+    log_path = Path(f"{ROOT}/git-workspace.log")
     try:
-        with open(f"{ROOT}/git-workspace.log", "x") as f:
+        with log_path.open("x") as f:
             f.write("Before 'git workspace rebase':\n")
             f.write(git("for-each-ref"))
             f.write("\n")
     except FileExistsError as err:
-        raise click.ClickException("git-workspace.log already exists") from err
+        raise click.ClickException(f"{log_path} already exists") from err
 
     logfile_unlinked = False
     try:
@@ -463,7 +464,7 @@ def rebase(ctx):
         try:
             ctx.invoke(down)
         except click.Abort:
-            os.unlink(f"{ROOT}/git-workspace.log")
+            log_path.unlink()
             logfile_unlinked = True
             raise
 
@@ -478,13 +479,13 @@ def rebase(ctx):
         progress.step("Bring up workspace")
         ctx.invoke(up)
 
-        os.unlink("git-workspace.log")
+        log_path.unlink()
         logfile_unlinked = True
     finally:
         if not logfile_unlinked:
             click.secho(
                 "Something went wrong. Original branch state stored in "
-                "git-workspace.log", fg="red")
+                f"{log_path}", fg="red")
 
 
 if __name__ == "__main__":
