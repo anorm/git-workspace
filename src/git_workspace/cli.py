@@ -24,7 +24,7 @@ class Branch(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def igrate_old_branches_schema(cls, value):
+    def migrate_old_branches_schema(cls, value):
         match value:
             case str():
                 return {"name": value, "base": None}
