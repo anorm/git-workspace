@@ -11,7 +11,7 @@ import click
 import yaml
 from cachetools import LRUCache
 from cachetools.keys import hashkey
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_serializer, model_validator
 
 MARKER = "!!! git-ws workspace marker !!!"
 ROOT: str
@@ -30,6 +30,13 @@ class Branch(BaseModel):
                 return {"name": value, "base": None}
             case _:
                 return value
+
+    @model_serializer(mode="wrap")
+    def serialize_model(self, handler):
+        if self.base is None:
+            return self.name
+
+        return handler(self)
 
 
 class Config(BaseModel):
