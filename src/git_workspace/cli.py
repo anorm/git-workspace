@@ -231,6 +231,7 @@ def is_up(cfg: Config):
 
 
 def validate_branch_dependencies(cfg: Config):
+    ret_status = True
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
         is_ancestor = git(
@@ -238,21 +239,44 @@ def validate_branch_dependencies(cfg: Config):
             rc_map={0: True, 1: False})
         if not is_ancestor:
             click.secho(
-                f"WARNING: {branch.name} is not a decendant of {real_base}")
+                f"ERROR: {branch.name} is not a decendant of {real_base}")
+            ret_status = False
 
         if branch.base:
             if branch.base not in [b.name for b in cfg.branches]:
                 click.secho(
                     f"ERROR: Branch {branch.name!r} has base branch "
                     f"{branch.base!r} which is not in workspace", fg="red")
+                ret_status = False
             is_ancestor = git(
                 ["merge-base", "--is-ancestor", branch.base, branch.name],
                 rc_map={0: True, 1: False})
             if not is_ancestor:
                 click.secho(
-                    f"WARNING: {branch.name} is not a decendant of "
+                    f"ERROR: {branch.name} is not a decendant of "
                     f"{branch.base}")
-    return True
+                ret_status = False
+    return ret_status
+
+
+def dependency_order(branches: list[Branch]) -> list[Branch]:
+    complete = set()
+    remaining = list(branches)
+    result = []
+
+    while remaining:
+        ready = [b for b in remaining if b.base is None or b.base in complete]
+
+        if not ready:
+            raise click.ClickException(
+                "Unable to resolve dependency order. "
+                f"Remaining: {[b.name for b in remaining]}")
+
+        result.extend(ready)
+        complete.update(b.name for b in ready)
+        remaining = [b for b in remaining if b.name not in complete]
+
+    return result
 
 
 @click.group(invoke_without_command=True)
@@ -286,24 +310,27 @@ def show():
     click.secho("Branches:", fg="yellow")
     for branch in cfg.branches:
         if branch.base:
-            click.echo(f"- {branch.name} on {branch.base}")
+            base_str = click.style(f"(on {branch.base})", dim=True)
+            click.echo(f"- {branch.name} {base_str}")
         else:
             click.echo(f"- {branch.name}")
 
 
 @cli.command
 @click.option("-b", "is_new_branch", is_flag=True)
+@click.option("--onto", type=str, metavar="BASE_BRANCH")
 @click.argument("branch", type=str)
-def add(is_new_branch: bool, branch: str):
+def add(is_new_branch: bool, onto: str, branch: str):
     """Add a branch to the workspace
 
-    Add an existing branch to the workspace. The base branch can not be
-    added. If invoked with -b, a new branch is created and added. The
-    new branch will be based on the workspace base"""
+    Add an existing branch to the workspace. The base branch can not be added.
+    If invoked with -b, a new branch is created and added. If --onto
+    BASE_BRANCH is supplied, the new branch will be based on BASE_BRANCH,
+    otherwise it will be based on the workspace base."""
     fail_if_dirty()
     cfg = load_config()
-    branches = set(b.name for b in cfg.branches)
-    if branch in branches:
+    workspace_branches = set(b.name for b in cfg.branches)
+    if branch in workspace_branches:
         raise click.ClickException(
             f"Branch '{branch}' is already in workspace")
     if not is_new_branch and branch not in list_git_branches():
@@ -315,13 +342,16 @@ def add(is_new_branch: bool, branch: str):
     if branch == cfg.base:
         raise click.ClickException(
             f"Branch '{branch}' is workspace base and cannot be added")
+    if onto and onto not in workspace_branches:
+        raise click.ClickException(
+            f"Base branch '{onto}' is not in workspace")
 
-    cfg.branches.append(Branch(name=branch, base=None))
+    cfg.branches.append(Branch(name=branch, base=onto))
     save_config(cfg)
 
     if is_new_branch:
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
-        git(["branch", "--no-track", branch, real_base])
+        git(["branch", "--no-track", branch, onto or real_base])
 
 
 @cli.command
@@ -333,6 +363,13 @@ def remove(branch):
     if branch not in set(b.name for b in cfg.branches):
         raise click.ClickException(
             f"Branch '{branch}' is not in the workspace")
+
+    dependants = [b.name for b in cfg.branches if b.base == branch]
+    if dependants:
+        listed = ", ".join(f"'{name}'" for name in dependants)
+        raise click.ClickException(
+            f"Branch '{branch}' is the base of {listed} and cannot be removed")
+
     cfg.branches = [b for b in cfg.branches if b.name != branch]
     save_config(cfg)
 
@@ -350,7 +387,8 @@ def status():
     merge_commit = find_megamerge_hash(cfg)
     real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
     for branch in cfg.branches:
-        git(f"log --oneline --graph {real_base}..{branch.name}", capture=False)
+        base = branch.base or real_base
+        git(f"log --oneline --graph {base}..{branch.name}", capture=False)
         print()
 
     if workspace_commit != merge_commit:
@@ -466,6 +504,8 @@ def rebase(ctx):
     try:
         cfg = load_config()
 
+        old_hashes = {b.name: find_branch_hash(b.name) for b in cfg.branches}
+
         progress = StepProgress(len(cfg.branches) + 2)
         progress.step("Tear down workspace")
         try:
@@ -476,12 +516,19 @@ def rebase(ctx):
             raise
 
         real_base = f"{cfg.remote}/{cfg.base}" if cfg.remote else cfg.base
-        for branch in cfg.branches:
-            progress.step(f"Rebase {branch.name} onto {real_base}")
+        for branch in dependency_order(cfg.branches):
+            base = branch.base or real_base
+            progress.step(f"Rebase {branch.name} onto {base}")
             if not git_branch_is_local(branch.name):
                 click.secho(f"Branch '{branch.name}' is not local. Skipping...")
                 continue
-            git(f"rebase {real_base} {branch.name}", capture=False)
+            if branch.base:
+                # TODO: stacked branches should use:
+                #       git rebase --onto base old_base branch
+                git(f"rebase --onto {base} {old_hashes[base]} {branch.name}",
+                    capture=False)
+            else:
+                git(f"rebase {base} {branch.name}", capture=False)
 
         progress.step("Bring up workspace")
         ctx.invoke(up)
@@ -493,6 +540,15 @@ def rebase(ctx):
             click.secho(
                 "Something went wrong. Original branch state stored in "
                 f"{log_path}", fg="red")
+
+
+@cli.command
+def ls_branches():
+    cfg = load_config()
+    workspace_branches = set(b.name for b in cfg.branches)
+    git_branches = set(list_git_branches())
+    for branch in sorted(git_branches.difference(workspace_branches)):
+        click.echo(branch)
 
 
 if __name__ == "__main__":

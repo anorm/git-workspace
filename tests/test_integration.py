@@ -84,6 +84,63 @@ def test_remove_branch_not_in_workspace_fails(gitws):
     assert "not in the workspace" in result.stderr
 
 
+def test_remove_branch_with_dependant_fails(gitws, make_branch, repo: Path):
+    make_branch("feature/a", "a.txt")
+    gitws("add", "feature/a")
+    gitws("add", "-b", "feature/b", "--onto", "feature/a")
+
+    result = gitws("remove", "feature/a")
+    assert result.returncode != 0
+    assert "is the base of 'feature/b'" in result.stderr
+
+    # Config is left untouched
+    cfg = yaml.safe_load((repo / ".gitws").read_text())
+    assert cfg["branches"] == [
+        "feature/a",
+        {"name": "feature/b", "base": "feature/a"},
+    ]
+
+
+def test_remove_branch_lists_all_dependants(gitws, make_branch):
+    make_branch("feature/a", "a.txt")
+    gitws("add", "feature/a")
+    gitws("add", "-b", "feature/b", "--onto", "feature/a")
+    gitws("add", "-b", "feature/c", "--onto", "feature/a")
+
+    result = gitws("remove", "feature/a")
+    assert result.returncode != 0
+    assert "'feature/b'" in result.stderr
+    assert "'feature/c'" in result.stderr
+
+
+def test_remove_dependant_then_its_base_succeeds(
+        gitws, make_branch, repo: Path):
+    """The guard lifts once the dependant is gone."""
+    make_branch("feature/a", "a.txt")
+    gitws("add", "feature/a")
+    gitws("add", "-b", "feature/b", "--onto", "feature/a")
+
+    assert gitws("remove", "feature/b").returncode == 0
+    result = gitws("remove", "feature/a")
+    assert result.returncode == 0, result.stderr
+
+    cfg = yaml.safe_load((repo / ".gitws").read_text())
+    assert cfg["branches"] == []
+
+
+def test_remove_leaf_of_a_stack_is_allowed(gitws, make_branch, repo: Path):
+    """Removing the tip of a stack has no dependants to break."""
+    make_branch("feature/a", "a.txt")
+    gitws("add", "feature/a")
+    gitws("add", "-b", "feature/b", "--onto", "feature/a")
+
+    result = gitws("remove", "feature/b")
+    assert result.returncode == 0, result.stderr
+
+    cfg = yaml.safe_load((repo / ".gitws").read_text())
+    assert cfg["branches"] == ["feature/a"]
+
+
 # ---------------------------------------------------------------------------
 # Up / down lifecycle
 # ---------------------------------------------------------------------------
